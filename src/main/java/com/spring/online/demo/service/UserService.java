@@ -2,22 +2,18 @@ package com.spring.online.demo.service;
 
 import com.spring.online.demo.DAO.UserDao;
 import com.spring.online.demo.models.User;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import jakarta.mail.MessagingException;
+
+import java.util.HashMap;
+import java.util.Map;
+
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
-
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.NoSuchAlgorithmException;
-import java.util.Date;
-import java.util.Optional;
-
-import jakarta.mail.internet.MimeMessage;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+import jakarta.mail.MessagingException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import jakarta.mail.internet.MimeMessage;
 
 @Service
 public class UserService {
@@ -26,118 +22,57 @@ public class UserService {
     UserDao userDao;
 
     @Autowired
-    BCryptPasswordEncoder passwordEncoder;
+    JwtManager jwtManager;
 
     @Autowired
     JavaMailSender mailSender;
 
-    public UserService() throws NoSuchAlgorithmException {
-        // Generate RSA key pair once and store it
-        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
-        keyGen.initialize(2048); // Set key size
-        KeyPair keyPair = keyGen.generateKeyPair();
-    }
-
-
-    public Object addUser(String email, String password, String username) throws MessagingException {
-        // Check if user already exists
-        Optional<User> existingUser = Optional.ofNullable(userDao.findByEmail(email));
-        if (existingUser.isPresent()) {
-            return "Email already registered";
-        }
-
-        // Create and save new user
-        User user = new User();
-        String hashedPassword = passwordEncoder.encode(password); // Hashing here ✅
-        user.setUsername(username);
-        user.setPassword(hashedPassword);
-        user.setEmail(email);
+    public String addUser(@RequestBody User user) throws MessagingException {
         userDao.save(user);
-
-        // Send welcome email
-
-        sendMail(email);
-
-        return user;
+        sendMail(user.getEmail());
+        return "User added";
     }
 
-    public Object getAllUser() {
-        return userDao.findAll();
+    public Map<String, Object> validateUser(@RequestParam("email") String email, @RequestParam("password") String password) throws MessagingException {
+        Map<String, Object> response = new HashMap<>();
+        
+        int valid = userDao.validateCredentials(email, password);
+        if (valid > 0) {
+            User user = userDao.findByEmailAndPassword(email, password);
+            String token = jwtManager.generateToken(user.getEmail());
+            sendMail(email);
+            
+            // Create proper JSON response
+            response.put("token", token);
+            response.put("user", user);
+            response.put("expiresIn", 3600); // 1 hour token expiry
+            response.put("status", "success");
+            return response;
+        }
+        
+        response.put("status", "error");
+        response.put("message", "Invalid Credentials");
+        return response;
     }
 
-    public Object getUserByUsername(String username) {
-        return userDao.getUserByUsername(username);
+    public User getUserById(int id) {
+        return userDao.findById(id).orElse(null);
     }
 
-    public Object validateUser(String username, String password) throws NoSuchAlgorithmException {
-        Optional<User> user = Optional.ofNullable(userDao.getUserByUsername(username));
-
-        if (user.isEmpty()) {
+    public String sendMail(String email) throws MessagingException {
+        User user = userDao.findByEmail(email);
+        if (user == null) {
             return "User not found";
         }
-
-        if (!passwordEncoder.matches(password, user.get().getPassword())) {
-            return "Wrong password";
-        }
-
-        User userFound = user.get();
-
-        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
-        KeyPair keyPair = keyGen.generateKeyPair();
-
-        String jwtToken = Jwts.builder().setSubject(user.get().getUsername()).setIssuedAt(new Date())
-                .setExpiration(new Date(System.currentTimeMillis() + 3600000))
-                .signWith(SignatureAlgorithm.RS256, keyPair.getPrivate())
-                .compact();
-
-        class JWTResponse {
-            private String jwtToken;
-            private User user;
-
-            public JWTResponse(String jwtToken, User user) {
-                this.jwtToken = jwtToken;
-                this.user = user;
-            }
-
-            public String getJwtToken() {
-                return jwtToken;
-            }
-
-            public User getUser() {
-                return user;
-            }
-
-            public void setUser(User user) {
-                this.user = user;
-            }
-
-            public void setJwtToken(String jwtToken) {
-                this.jwtToken = jwtToken;
-            }
-        }
-
-        return new JWTResponse(jwtToken, userFound);
-    }
-
-
-
-    public Object sendMail(String email) throws MessagingException {
-        Optional<User> user = Optional.ofNullable(userDao.findByEmail(email));
-        if (user.isEmpty()) {
-            return "User not found";
-        }
-
-        String username = user.get().getUsername(); // Get the actual username
-
+        String username = user.getUsername();
         MimeMessage mimeMessage = mailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true);
-
         String htmlContent = String.format("""
         <!DOCTYPE html>
-        <html lang="en">
+        <html lang=\"en\">
         <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <meta charset=\"UTF-8\">
+            <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
             <title>Welcome to TuneUp</title>
             <style>
                 body, html { margin: 0; padding: 0; font-family: 'Poppins', sans-serif; background: linear-gradient(135deg, #1DB954 0%%, #191414 100%%); color: #ffffff; }
@@ -150,24 +85,20 @@ public class UserService {
             </style>
         </head>
         <body>
-            <div class="email-container">
-                <h1 class="header-title">Welcome to TuneUp, %s! 🎵</h1>
-                <p class="welcome-message">Your Musical Universe Awaits!</p>
+            <div class=\"email-container\">
+                <h1 class=\"header-title\">Welcome to TuneUp, %s! 🎵</h1>
+                <p class=\"welcome-message\">Your Musical Universe Awaits!</p>
                 <p>Get ready to dive into a world where music meets magic. TuneUp is more than a platform—it's your personal soundtrack.</p>
-                <a href="#" class="cta-button">Unleash Your Playlist</a>
-                <div class="email-footer">© 2025 TuneUp. All rights reserved.</div>
+                <a href=\"#\" class=\"cta-button\">Unleash Your Playlist</a>
+                <div class=\"email-footer\">© 2025 TuneUp. All rights reserved.</div>
             </div>
         </body>
         </html>
-    """, username); // Inject username into the string
-
+        """, username);
         helper.setTo(email);
         helper.setSubject("Welcome to TuneUp!");
         helper.setText(htmlContent, true);
-
         mailSender.send(mimeMessage);
-
         return "Mail Sent Successfully";
     }
-
 }
