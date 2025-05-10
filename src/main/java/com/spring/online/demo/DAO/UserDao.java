@@ -20,5 +20,11 @@ public interface UserDao extends JpaRepository<User, Integer> {
     @Query("select U from User U where U.email=:email")
     public User findByEmail(String email);
 
+    @Query("Select count(u) from User u where u.email =:email")
+    public int validateEmail(@Param("email") String email);
+
+
+
+
 
 }

@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import jakarta.mail.MessagingException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+
 import jakarta.mail.internet.MimeMessage;
 
 @Service
@@ -28,20 +29,32 @@ public class UserService {
     JavaMailSender mailSender;
 
     public String addUser(@RequestBody User user) throws MessagingException {
+        // Debug print to check what role is being received
+        System.out.println("Received user with role: " + user.getRole());
+        
+        // Set default role only if null
+        if(user.getRole() == null) {
+            user.setRole("USER");
+        } else {
+            // Ensure role is uppercase for consistency
+            user.setRole(user.getRole().toUpperCase());
+        }
+        
+        // Debug print to check what role will be saved
+        System.out.println("Saving user with role: " + user.getRole());
+        
         userDao.save(user);
-        sendMail(user.getEmail());
-        return "User added";
+        // sendMail(user.getEmail());
+        return "User added with role: " + user.getRole();
     }
 
     public Map<String, Object> validateUser(@RequestParam("email") String email, @RequestParam("password") String password) throws MessagingException {
         Map<String, Object> response = new HashMap<>();
-        
-        int valid = userDao.validateCredentials(email, password);
-        if (valid > 0) {
-            User user = userDao.findByEmailAndPassword(email, password);
-            String token = jwtManager.generateToken(user.getEmail());
-            sendMail(email);
-            
+        User user = userDao.findByEmail(email);
+        if (user != null && user.getPassword().equals(password)) {
+            String role = String.valueOf(user.getRole());
+            String token = jwtManager.generateToken(user.getEmail(), role); // Include role in token
+            // sendMail(email);
             // Create proper JSON response
             response.put("token", token);
             response.put("user", user);
@@ -49,7 +62,6 @@ public class UserService {
             response.put("status", "success");
             return response;
         }
-        
         response.put("status", "error");
         response.put("message", "Invalid Credentials");
         return response;

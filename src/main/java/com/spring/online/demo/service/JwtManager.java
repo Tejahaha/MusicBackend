@@ -16,10 +16,10 @@ public class JwtManager {
     public final String SEC_KEY = "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890MKDJSHIEUFBEICBWIEOWDWUU";
     public final SecretKey key = Keys.hmacShaKeyFor(SEC_KEY.getBytes());
 
-    public String generateToken(String email)
-    {
+    public String generateToken(String email, String role) {
         Map<String, String> data = new HashMap<String, String>();
         data.put("email", email);
+        data.put("role", role); // Include role in token
 
         return Jwts.builder()
                 .setClaims(data)

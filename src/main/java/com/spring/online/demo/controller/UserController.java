@@ -16,8 +16,6 @@ import com.spring.online.demo.service.UserService;
 
 import jakarta.mail.MessagingException;
 
-
-
 @RestController
 @CrossOrigin(origins ="*")
 @RequestMapping("/user")
@@ -28,6 +26,8 @@ public class UserController {
 
     @PostMapping("/signup")
     public String addUser(@RequestBody User user) throws MessagingException {
+        // Debug logging to check what's in the request body
+        System.out.println("Received signup request with role: " + user.getRole());
         return us.addUser(user);
     }
 
