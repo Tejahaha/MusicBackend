@@ -1,15 +1,10 @@
-# Stage 1: Build the app
-FROM eclipse-temurin:21-jdk as builder
-WORKDIR /app
+FROM maven:3.8.4-openjdk-17 AS build
 COPY . .
-RUN ./mvnw -B -DskipTests clean package
+RUN mvn clean package -DskipTests
 
-# Stage 2: Run the app
-FROM eclipse-temurin:21-jre
-WORKDIR /app
-
-# Copy the built jar (explicitly)
-COPY --from=builder /app/target/Tuneup.jar app.jar
-
+FROM openjdk:17.0.1-jdk-slim
+COPY --from=build /target/TuneUp.jar demo.jar
 EXPOSE 8080
-CMD ["java", "-jar", "app.jar"]
+ENTRYPOINT [ "java" , "-jar" , "demo.jar" ]
+
+
